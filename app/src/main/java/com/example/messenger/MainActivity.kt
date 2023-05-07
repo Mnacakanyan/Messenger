@@ -1,19 +1,18 @@
 package com.example.messenger
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.viewModels
-import androidx.lifecycle.lifecycleScope
+import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.messenger.Keys.G
+import com.example.messenger.Keys.P
+import com.example.messenger.Keys.privateKey
 import com.example.messenger.databinding.ActivityMainBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.net.Socket
 
 class MainActivity : AppCompatActivity() {
-    private val viewModel: MainViewModel by viewModels()
+    private var Adash = 0.0
+
     private lateinit var viewBinding: ActivityMainBinding
     private val messagesList = mutableListOf<MessageType>()
     private val adapter = MessagesAdapter(messagesList)
@@ -45,17 +44,18 @@ class MainActivity : AppCompatActivity() {
             if (text.toString().isBlank()) {
                 return@setOnClickListener
             }
-
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
+            Thread{
                 try {
-                    socket?.getOutputStream()?.write(text.toString().length)
-                    socket?.getOutputStream()?.write(text.toString().encodeToByteArray())
+                    socket?.getOutputStream()?.write(text.toString().length+Adash.toInt())
+                    val bytes = ByteArray(text.toString().length)
+                    for (i in bytes.indices) {
+                        bytes[i] = (text.toString()[i].code+Adash.toInt()).toByte()
+                    }
+                    socket?.getOutputStream()?.write(bytes)
                 }catch (e: Exception) {
                     Log.d(TAG, e.toString())
                 }
-            }
-        }
+            }.start()
         messagesList.add(
             MessageType(text.toString(), Sender.User)
         )
@@ -68,7 +68,14 @@ class MainActivity : AppCompatActivity() {
     private fun setServer() {
         val thread = Thread {
             try {
+                //deffie-helman
                 socket = Socket(Server.ADDRESS, Server.PORT)
+                socket?.getOutputStream()?.write(P.toInt())
+                socket?.getOutputStream()?.write(G.toInt())
+                val A = ((Math.pow(G.toDouble(), privateKey.toDouble())) % P)
+                socket?.getOutputStream()?.write(A.toInt())
+                val serverB = socket?.getInputStream()?.read()
+                Adash = ((Math.pow(serverB?.toDouble() ?: 1.0, privateKey.toDouble())) % P)
                 Log.d(TAG, "Connected $socket")
 
                 getMessage()
@@ -83,9 +90,9 @@ class MainActivity : AppCompatActivity() {
     private fun getMessage() {
         val str = StringBuilder()
             while (true) {
-                val length = socket?.getInputStream()?.read() ?: 0
+                val length = socket?.getInputStream()?.read()?.minus(Adash.toInt()) ?: 0
                 for (i in 1..length) {
-                    str.append(socket?.getInputStream()?.read()?.toChar().toString())
+                    str.append((socket?.getInputStream()?.read()?.minus(Adash.toInt()))?.toChar().toString())
                 }
                 messagesList.add(
                     MessageType(str.toString(), Sender.Server)
